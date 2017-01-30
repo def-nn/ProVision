@@ -41,6 +41,14 @@ FIND_EDGES = 2
 
 
 class MainWindow(Tk):
+    """
+    Root window - creates and packs all elements of program during initialization
+
+    Attributes:
+        img_container (ImageContainer) : area, where the image or the result of its processing will be displayed
+        act_panel        (ActionPanel) : sidebar with basic functionality (upload image, set custom settings
+                                         for mean shift segmentation, select the processing method)
+    """
 
     def __init__(self):
         Tk.__init__(self)
@@ -66,6 +74,29 @@ class MainWindow(Tk):
 
 
 class ImageContainer(Frame):
+    """
+    Class for displaying uploaded image and results of its processing
+
+    Args:
+        master (MainWindow)     : parent widget
+
+    Attributes:
+        img         (PIL.Image) : image that will be shown on the screen
+        widget  (tkinter.Label) : main work area - displays hint "Please choose image" if no image has been uploaded
+                                or instance of tkinter.Canvas class with selected photo otherwise
+        widget_width      (int) : object width
+        widget_height     (int) : object height
+        canvas (tkinter.Canvas) : canvas for displaying image
+                                  will be initialized when an image is uploaded for the first time
+        draw_mode        (bool) : True when button "Detect" was pressed
+                                  if True - user able to add markers to an image - with each click on the image
+                                  in its place will appear color circle (as if you were drawing)
+                                  and its coordinates will be added to self.markers
+                                  if False - nothing happens
+        markers          (list) : list with selected markers in drawing mode (when button "Detect" was pressed)
+                                  which will be used for object detection
+
+    """
     def __init__(self, master=None):
         Frame.__init__(self, master=master)
 
@@ -73,18 +104,27 @@ class ImageContainer(Frame):
         self.widget = Label(self, text="Please choose image", font=('helvetica', 20), fg='#ffffff', bg=MAIN_COLOR)
         self.widget.pack(expand=YES, fill=BOTH)
 
+        # Will be initialized correctly after uploading image
         self.widget_width, self.widget_height = 0, 0
-        self.canvas = None
 
+        self.canvas = None
         self.draw_mode = False
         self.markers = []
 
     def reset_markers(self):
+        """
+        Reset markers list (called each time after image has been processed)
+        """
         self.markers = []
 
     def pack_image(self, file=None, img_matrix=None):
-        self.draw_mode = False
+        """
+        Displays given image in self.canvas widget
+        Note: must be estimated either file or img_matrix parameter
 
+        :param file: path to the image file (used when image has been just loaded with "Load image" button)
+        :param img_matrix: image as numpy.ndarray (used when want to display result of image processing)
+        """
         if file:
             try:
                 self.img = Image.open(file)
@@ -100,9 +140,13 @@ class ImageContainer(Frame):
                 """
             )
 
+        # Set draw_mode to False to prevent its activating after self.activate_draw_mode has been called
+        self.draw_mode = False
+
         self.widget_width, self.widget_height = self.winfo_width(), self.winfo_height()
         img_width, img_height = self.img.size
 
+        # Resize image if its bigger then container area
         if img_width > self.widget_width or img_height > self.widget_height:
             self.img.thumbnail((self.widget_width - 100, self.widget_height - 120), Image.ANTIALIAS)
             img_width, img_height = self.img.size
@@ -111,21 +155,26 @@ class ImageContainer(Frame):
         self.widget = Label(self)
         self.widget.pack(expand=YES, fill=BOTH)
 
-        canvas = Canvas(self.widget, width=self.widget_width, height=self.widget_height,
+        self.canvas = Canvas(self.widget, width=self.widget_width, height=self.widget_height,
                                                             bg=MAIN_COLOR, highlightthickness=0)
-        canvas.pack(expand=YES, fill=BOTH)
-
-        self.canvas = canvas
+        self.canvas.pack(expand=YES, fill=BOTH)
 
         photo = ImageTk.PhotoImage(self.img)
-        canvas.create_image(self.widget_width // 2, self.widget_height // 2, image=photo)
-        canvas.image = photo
-        canvas.img_width, canvas.img_height = img_width, img_height
+        self.canvas.create_image(self.widget_width // 2, self.widget_height // 2, image=photo)
+        self.canvas.img_width, self.canvas.img_height = img_width, img_height
+
+        # That image would not be garbage collected
+        self.canvas.image = photo
 
         params = self.widget_width, self.widget_height, img_width, img_height
-        canvas.bind('<ButtonPress-1>', lambda event, params=params: self.onClick(event, *params))
+        self.canvas.bind('<ButtonPress-1>', lambda event, params=params: self.onClick(event, *params))
 
     def activate_draw_mode(self, panel):
+        """
+        Activate drawing mode
+
+        :param panel: instance of ActionPanel class for binding events
+        """
         self.draw_mode = True
 
         self.canvas.create_text(
@@ -158,7 +207,23 @@ class ImageContainer(Frame):
                     event.x - 5, event.y - 5, event.x + 5, event.y + 5, width=2, fill='#0000ff', outline='')
                 self.markers.append((_y, _x))
 
+
 class ActionPanel(Frame):
+    """
+    Left-side panel for access to core functionality of the program
+
+    Args:
+        master (MainWindow) : parent widget
+
+    Attributes:
+        parent                  (MainWindow) : parent widget - may be used for access to its img_container member
+                                               (to change shown image, activate drawing mode, etc)
+        options   (`dict` of `str`:`lambda`) : key => button label
+                                               value => binding command
+        is_settings_enabled (tkinter.IntVar) : if equals to 0 - data from setting panel will be retrieved
+                                               and used as parameters for mean shift segmentation
+                                               otherwise default settings will be used (8, 10, 20)
+    """
 
     def __init__(self, master):
         Frame.__init__(self, master=master)
@@ -260,6 +325,19 @@ class ActionPanel(Frame):
         return settings
 
     def image_process(self, action_key):
+        """
+        This method is binding to the each action buttons and called with parameter that must specify
+        which method should be used for image processing
+
+        Note:
+            Action DETECT consists of two steps:
+            estimate markers by activating drawing mode in ImageContainer instance
+            and detect objects using this markers.
+            So it requires a separate handling
+
+        Args:
+            action_key (str) : determines which action was chosen (which button was clicked)
+        """
         if action_key == DETECT:
             self.master.img_container.pack_image(file=self.file)
             self.master.img_container.activate_draw_mode(self)
@@ -298,6 +376,8 @@ class ActionPanel(Frame):
         return res
 
     def detect(self, markers):
+        self.config(cursor='wait')
+
         self.master.img_container.pack_image(file=self.file)
 
         settings = self.get_settings()
@@ -307,8 +387,8 @@ class ActionPanel(Frame):
 
         spatial_radius, range_radius, min_density = settings
         segmented_img, labels_img, number_regions = pms.segment(original_img,
-                                                            spatial_radius, range_radius, min_density)
-        detector = Detector(original_img, segmented_img, labels_img)
+                                                                spatial_radius, range_radius, min_density)
+        detector = Detector(segmented_img, labels_img)
 
         img = np.copy(original_img)
 
@@ -327,3 +407,6 @@ class ActionPanel(Frame):
 
         self.master.img_container.reset_markers()
         self.master.img_container.pack_image(img_matrix=img)
+
+        self.config(cursor='')
+

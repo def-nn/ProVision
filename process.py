@@ -1,5 +1,5 @@
-import math, time
-import pymeanshift as pms
+import math
+import time
 import numpy as np
 import cv2
 
@@ -21,6 +21,21 @@ def find_edges(img, img_labels):
 
 
 class ForegroundObject:
+    """
+    Class for keeping an information about detected object
+
+    Args:
+        center (`tuple` of `int`) : coordinates of object center (row, col)
+        label               (int) : label which is definitely belongs to an object
+
+    Attributes:
+        c_row, c_col                      (int) : coordinates of object center
+        main_label                        (int) : start label
+        labels                (`list` of `int`) : list of labels belonging to the object
+        boundaries (`tuple` of `numpy.ndarray`) : first element of a tuple contains coordinates of boundaries
+                                                  second its a labels of clusters which borders the object
+                                                  at the corresponding points from first array
+    """
 
     def __init__(self, center, label):
         self.c_row, self.c_col = center
@@ -30,9 +45,26 @@ class ForegroundObject:
 
 
 class Detector:
+    """
+    Class for object detection in segmented images
 
-    def __init__(self, original_img, segmented_img, img_labels):
-        self.original_img = original_img
+    Note:
+        Before usage f_object attribute must be set or KeyError will be raised.
+        Could be applied multiple times with different ForegroundObject instances
+
+    Args:
+        segmented_img (numpy.ndarray) : segmented image as matrix
+        img_labels    (numpy.ndarray) : labels of segmented image
+
+    Attributes:
+        img_labels    (numpy.ndarray) : labels of the processed image
+        f_object   (ForegroundObject) : detected object
+        hue           (numpy.ndarray) : hue channel of an image in HSV color space
+        sat           (numpy.ndarray) : sat channel of an image in HSV color space
+        val           (numpy.ndarray) : val channel of an image in HSV color space
+    """
+
+    def __init__(self, segmented_img, img_labels):
         self.img_labels = img_labels
         self.f_object = Detector.undefined
 
@@ -56,6 +88,17 @@ class Detector:
             self.__dict__[key] = value
 
     def find_color_distance(self, p1, p2):
+        """
+        Find euclidean distance between two pixels in HSV color space
+
+        Note:
+            To avoid a problem of passing negative value as a parameter to a sqrt() function
+            which may appear if both pixels have the same values on each HSV channel (due to loss of accuracy)
+            we have to check that pixels values differs or just return 0 otherwise
+
+        :param p1: HSV values of first pixel
+        :param p2: HSV values of second pixel
+        """
         h1, s1, v1 = p1
         h2, s2, v2 = p2
 
@@ -68,6 +111,14 @@ class Detector:
         )
 
     def find_cluster_boundaries(self, label):
+        """
+        Find boundary points in given cluster
+
+        :param label: label of cluster, which boundaries have to be found
+        :return: (`tuple` of `numpy.ndarray`) - first element of a tuple contains coordinates of boundaries
+                                                second its a labels of clusters which borders the object
+                                                at the corresponding points from first array
+        """
         bound_coord = list()
         bound_label = list()
 
@@ -110,6 +161,11 @@ class Detector:
         return boundaries
 
     def extend_obj_boundaries(self, label):
+        """
+        Extends object boundary with area of given cluster
+
+        :param label: label of cluster, which boundaries have to be found
+        """
         extended_bound_coord, extended_bound_label = self.find_cluster_boundaries(label)
         obj_bound_coord, obj_bound_label = self.f_object.boundaries
 
@@ -126,6 +182,10 @@ class Detector:
         self.f_object.boundaries = (new_bound_cord, new_bound_label)
 
     def find_cluster_property(self):
+        """
+        :return: tuple that contains sum of all elements of the objects on each channels
+                 (in HSV color space) and number of all elements
+        """
         numerator_hue = numerator_sat = numerator_val = denominator = 0
 
         for label in self.f_object.labels:
@@ -140,6 +200,16 @@ class Detector:
         return numerator_hue, numerator_sat, numerator_val, denominator
 
     def compute_avg(self, cluster_property, label):
+        """
+        Computing average color variance in object as if elements of given cluster would be added to it.
+
+        :param cluster_property: init properties of object - sum of all elements of the objects on each channels
+                                 (in HSV color space) and number of all elements
+        :param label: label of cluster, which element have to be added to object
+
+        :return: computing variance - euclidean distance between modified average values of object and values of
+                                      main object cluster in HSV color space
+        """
         numerator_hue, numerator_sat, numerator_val, denominator = cluster_property
 
         index = np.where(self.img_labels == label)
@@ -164,6 +234,9 @@ class Detector:
         )
 
     def find_neighbour_labels(self):
+        """
+        :return: list of labels of all clusters which adjoin to an object
+        """
         neighbour = set()
         for row, col in self.f_object.boundaries[0]:
 
@@ -179,10 +252,12 @@ class Detector:
                 if self.img_labels[row, col + 1] not in self.f_object.labels:
                     neighbour.add(self.img_labels[row, col + 1])
 
-
         return neighbour
 
     def detect_object(self):
+        """
+        :return: top-left and bottom-right coordinates of boundary rectangle of detected object
+        """
         start = time.time()
 
         mask = np.zeros(self.img_labels.shape, dtype=np.uint8)
@@ -220,12 +295,3 @@ class Detector:
         raise KeyError("You have to define f_object member with instance of ForegroundObject")
 
     undefined = property(get_undefined_object)
-
-
-
-
-
-
-
-
-

@@ -1,5 +1,6 @@
 import numpy as np
 import pymeanshift as pms
+import cv2
 
 from tkinter import *
 from tkinter.filedialog import askopenfilename
@@ -72,7 +73,18 @@ class ImageContainer(Frame):
         self.widget = Label(self, text="Please choose image", font=('helvetica', 20), fg='#ffffff', bg=MAIN_COLOR)
         self.widget.pack(expand=YES, fill=BOTH)
 
+        self.widget_width, self.widget_height = 0, 0
+        self.canvas = None
+
+        self.draw_mode = False
+        self.markers = []
+
+    def reset_markers(self):
+        self.markers = []
+
     def pack_image(self, file=None, img_matrix=None):
+        self.draw_mode = False
+
         if file:
             try:
                 self.img = Image.open(file)
@@ -88,30 +100,63 @@ class ImageContainer(Frame):
                 """
             )
 
-        widget_width, widget_height = self.winfo_width(), self.winfo_height()
+        self.widget_width, self.widget_height = self.winfo_width(), self.winfo_height()
         img_width, img_height = self.img.size
 
-        if img_width > widget_width or img_height > widget_height:
-            self.img.thumbnail((widget_width - 40, widget_height - 60), Image.ANTIALIAS)
+        if img_width > self.widget_width or img_height > self.widget_height:
+            self.img.thumbnail((self.widget_width - 100, self.widget_height - 120), Image.ANTIALIAS)
             img_width, img_height = self.img.size
 
         self.widget.pack_forget()
-        photo = ImageTk.PhotoImage(self.img)
-        self.widget = Label(self, image=photo, bg=MAIN_COLOR)
-        self.widget.image = photo
+        self.widget = Label(self)
         self.widget.pack(expand=YES, fill=BOTH)
 
-        params = widget_width, widget_height, img_width, img_height
+        canvas = Canvas(self.widget, width=self.widget_width, height=self.widget_height,
+                                                            bg=MAIN_COLOR, highlightthickness=0)
+        canvas.pack(expand=YES, fill=BOTH)
 
-        self.widget.bind('<ButtonPress-1>', lambda event, params=params: self.onClick(event, *params))
+        self.canvas = canvas
+
+        photo = ImageTk.PhotoImage(self.img)
+        canvas.create_image(self.widget_width // 2, self.widget_height // 2, image=photo)
+        canvas.image = photo
+        canvas.img_width, canvas.img_height = img_width, img_height
+
+        params = self.widget_width, self.widget_height, img_width, img_height
+        canvas.bind('<ButtonPress-1>', lambda event, params=params: self.onClick(event, *params))
+
+    def activate_draw_mode(self, panel):
+        self.draw_mode = True
+
+        self.canvas.create_text(
+            self.widget_width // 2,
+            (self.widget_height - self.canvas.img_height) // 4,
+            text='Add markers to the image',
+            font=('helvetica', 20),
+            fill='#ffffff'
+        )
+
+        btn = Button(
+            master=self.canvas,
+            padx=50,
+            pady=5,
+            text='DETECT',
+            state=DISABLED,
+            command=lambda: panel.detect(self.markers)
+        )
+        btn.pack(side=BOTTOM, pady=(self.widget_height - self.canvas.img_height) // 8)
+        self.canvas.btn = btn
 
     def onClick(self, event, widget_width, widget_height, img_width, img_height):
-        _x = event.x - (widget_width - img_width) // 2
-        _y = event.y - (widget_height - img_height) // 2
+        if self.draw_mode:
+            _x = event.x - (widget_width - img_width) // 2
+            _y = event.y - (widget_height - img_height) // 2
 
-        if 0 < _x < img_width and 0 < _y < img_height:
-            print(_x, _y)
-
+            if 0 < _x < img_width and 0 < _y < img_height:
+                self.canvas.btn.configure(state=NORMAL)
+                self.canvas.create_oval(
+                    event.x - 5, event.y - 5, event.x + 5, event.y + 5, width=2, fill='#0000ff', outline='')
+                self.markers.append((_y, _x))
 
 class ActionPanel(Frame):
 
@@ -210,14 +255,18 @@ class ActionPanel(Frame):
                     showerror('Invalid parameters',
                               'Parameters must be positve integer value')
                     return None
-        else: settings = (8, 12, 20)
+        else: settings = (8, 10, 20)
 
         return settings
 
     def image_process(self, action_key):
+        if action_key == DETECT:
+            self.master.img_container.pack_image(file=self.file)
+            self.master.img_container.activate_draw_mode(self)
+            return
+
         action = {
             SEGMENT   : self.segment,
-            DETECT    : self.detect,
             FIND_EDGES: self.find_edges
         }[action_key]
 
@@ -240,17 +289,6 @@ class ActionPanel(Frame):
 
         return segmented_img
 
-    def detect(self, original_img, settings):
-        spatial_radius, range_radius, min_density = settings
-        segmented_img, labels_img, number_regions = pms.segment(original_img,
-                                                            spatial_radius, range_radius, min_density)
-        detector = Detector(original_img, segmented_img, labels_img)
-        f_obj = ForegroundObject((200, 200), labels_img[200, 200])
-
-        detector.f_object = f_obj
-
-        return detector.detect_object()
-
     def find_edges(self, original_img, settings):
         spatial_radius, range_radius, min_density = settings
         segmented_img, labels_img, number_regions = pms.segment(original_img,
@@ -259,3 +297,33 @@ class ActionPanel(Frame):
 
         return res
 
+    def detect(self, markers):
+        self.master.img_container.pack_image(file=self.file)
+
+        settings = self.get_settings()
+        if not settings: return
+
+        original_img = Image.open(self.file)
+
+        spatial_radius, range_radius, min_density = settings
+        segmented_img, labels_img, number_regions = pms.segment(original_img,
+                                                            spatial_radius, range_radius, min_density)
+        detector = Detector(original_img, segmented_img, labels_img)
+
+        img = np.copy(original_img)
+
+        for row, col in markers:
+            f_obj = ForegroundObject((row, col), labels_img[row, col])
+            detector.f_object = f_obj
+
+            (x1, y1), (x2, y2) = detector.detect_object()
+            if not(x1 == 0 and y1 == 0 and x2 == labels_img.shape[0] and y2 == labels_img.shape[1]):
+                x1 = labels_img.shape[0] * 0.05
+                x1 = labels_img.shape[1] * 0.05
+                x1 *= 0.9
+                x1 *= 0.9
+
+            img = cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
+
+        self.master.img_container.reset_markers()
+        self.master.img_container.pack_image(img_matrix=img)

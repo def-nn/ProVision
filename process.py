@@ -67,7 +67,6 @@ class Detector:
             (v1 - v2) ** 2
         )
 
-
     def find_cluster_boundaries(self, label):
         bound_coord = list()
         bound_label = list()
@@ -78,10 +77,12 @@ class Detector:
             col_list = cols[np.where(rows == row)]
             left, right = np.min(col_list), np.max(col_list)
 
-            bound_coord.append((row, left))
-            bound_label.append(self.img_labels[row, left - 1])
-            bound_coord.append((row, right))
-            bound_label.append(self.img_labels[row, right + 1])
+            if left != 0:
+                bound_coord.append((row, left))
+                bound_label.append(self.img_labels[row, left - 1])
+            if right != self.img_labels.shape[1] - 1:
+                bound_coord.append((row, right))
+                bound_label.append(self.img_labels[row, right + 1])
 
         bound_coord[:2] = []
         bound_coord[-2:] = []
@@ -183,7 +184,6 @@ class Detector:
 
     def detect_object(self):
         start = time.time()
-        img = np.copy(self.original_img)
 
         mask = np.zeros(self.img_labels.shape, dtype=np.uint8)
         mask[np.where(self.img_labels == self.f_object.main_label)] = 255
@@ -207,13 +207,13 @@ class Detector:
 
         image, contours, hierarcly = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         x, y, w, h = cv2.boundingRect(contours[0])
+
         x1, y1 = int(x * 0.95), int(y * 0.95)
         x2, y2 = int((x + w) * 1.05), int((y + h) * 1.05)
-        img = cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
 
         print(time.time() - start)
 
-        return img
+        return (x1, y1), (x2, y2)
 
     @staticmethod
     def get_undefined_object(self):

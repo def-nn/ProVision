@@ -55,6 +55,19 @@ class Detector:
         else:
             self.__dict__[key] = value
 
+    def find_color_distance(self, p1, p2):
+        h1, s1, v1 = p1
+        h2, s2, v2 = p2
+
+        if h1 == h2 and s1 == s2 and v1 == v2: return 0
+
+        return math.sqrt(
+            s1 ** 2 + s2 ** 2 -
+            s1 * s2 * math.cos(min(abs(h1 - h2), math.pi * 2 - abs(h1 - h2))) * 2 +
+            (v1 - v2) ** 2
+        )
+
+
     def find_cluster_boundaries(self, label):
         bound_coord = list()
         bound_label = list()
@@ -81,11 +94,13 @@ class Detector:
         bottom_index = np.where(rows == bottom_bound)
 
         for index in top_index[0]:
-            bound_coord.insert(0, (rows[index], cols[index]))
-            bound_label.insert(0, self.img_labels[rows[index] - 1, cols[index]])
+            if rows[index] != 0:
+                bound_coord.insert(0, (rows[index], cols[index]))
+                bound_label.insert(0, self.img_labels[rows[index] - 1, cols[index]])
         for index in bottom_index[0]:
-            bound_coord.append((rows[index], cols[index]))
-            bound_label.append(self.img_labels[rows[index] + 1, cols[index]])
+            if rows[index] != self.img_labels.shape[0] - 1:
+                bound_coord.append((rows[index], cols[index]))
+                bound_label.append(self.img_labels[rows[index] + 1, cols[index]])
 
         boundaries = (
             np.asarray(bound_coord),
@@ -157,7 +172,7 @@ class Detector:
                 if self.img_labels[row + 1, col] not in self.f_object.labels:
                     neighbour.add(self.img_labels[row + 1, col])
 
-            if col != self.img_labels.shape[0] - 1 and col != 0:
+            if col != self.img_labels.shape[1] - 1 and col != 0:
                 if self.img_labels[row, col - 1] not in self.f_object.labels:
                     neighbour.add(self.img_labels[row, col - 1])
                 if self.img_labels[row, col + 1] not in self.f_object.labels:
@@ -169,6 +184,9 @@ class Detector:
     def detect_object(self):
         start = time.time()
         img = np.copy(self.original_img)
+
+        mask = np.zeros(self.img_labels.shape, dtype=np.uint8)
+        mask[np.where(self.img_labels == self.f_object.main_label)] = 255
 
         self.f_object.boundaries = self.find_cluster_boundaries(self.f_object.main_label)
 
@@ -182,28 +200,20 @@ class Detector:
                 if self.compute_avg(cluster_property, label) < 0.1:
                     self.f_object.labels.append(label)
                     self.extend_obj_boundaries(label)
+                    mask[np.where(self.img_labels == label)] = 255
                     exit_flag = False
 
             if exit_flag: break
 
-        for label in self.f_object.labels:
-            img[np.where(self.img_labels == label)] = 0
+        image, contours, hierarcly = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        x, y, w, h = cv2.boundingRect(contours[0])
+        x1, y1 = int(x * 0.95), int(y * 0.95)
+        x2, y2 = int((x + w) * 1.05), int((y + h) * 1.05)
+        img = cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
 
         print(time.time() - start)
 
         return img
-
-    def find_color_distance(self, p1, p2):
-        h1, s1, v1 = p1
-        h2, s2, v2 = p2
-
-        if h1 == h2 and s1 == s2 and v1 == v2: return 0
-
-        return math.sqrt(
-            s1 ** 2 + s2 ** 2 -
-            s1 * s2 * math.cos(min(abs(h1 - h2), math.pi * 2 - abs(h1 - h2))) * 2 +
-            (v1 - v2) ** 2
-        )
 
     @staticmethod
     def get_undefined_object(self):

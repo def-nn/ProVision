@@ -245,7 +245,7 @@ class ActionPanel(Frame):
         segmented_img, labels_img, number_regions = pms.segment(original_img,
                                                             spatial_radius, range_radius, min_density)
         detector = Detector(original_img, segmented_img, labels_img)
-        f_obj = ForegroundObject((220, 270), labels_img[220, 270])
+        f_obj = ForegroundObject((200, 200), labels_img[200, 200])
 
         detector.f_object = f_obj
 

@@ -51,42 +51,67 @@ class Detector:
             if isinstance(value, ForegroundObject) or isinstance(value, property):
                 self.__dict__[key] = value
             else:
-                raise ValueError("set_foreground_object method " +
-                                 "should take instance of ForegroundObject class as parameter")
+                raise ValueError("Member f_object should be an instance of ForegroundObject class as parameter")
         else:
             self.__dict__[key] = value
 
-    def find_cluster_boundaries(self):
-        boundaries = list()
+    def find_cluster_boundaries(self, label):
+        bound_coord = list()
+        bound_label = list()
 
-        for label in self.f_object.labels:
-            rows, cols = np.where(self.img_labels == label)
+        rows, cols = np.where(self.img_labels == label)
 
-            for row in set(rows):
-                col_list = cols[np.where(rows == row)]
-                left, right = np.min(col_list), np.max(col_list)
+        for row in set(rows):
+            col_list = cols[np.where(rows == row)]
+            left, right = np.min(col_list), np.max(col_list)
 
-                boundaries.append((row, left))
-                boundaries.append((row, right))
+            bound_coord.append((row, left))
+            bound_label.append(self.img_labels[row, left - 1])
+            bound_coord.append((row, right))
+            bound_label.append(self.img_labels[row, right + 1])
 
-            boundaries[:2] = []
-            boundaries[-2:] = []
+        bound_coord[:2] = []
+        bound_coord[-2:] = []
+        bound_label[:2] = []
+        bound_label[-2:] = []
 
-            top_bound, bottom_bound = np.min(rows), np.max(rows)
+        top_bound, bottom_bound = np.min(rows), np.max(rows)
 
-            top_index = np.where(rows == top_bound)
-            bottom_index = np.where(rows == bottom_bound)
+        top_index = np.where(rows == top_bound)
+        bottom_index = np.where(rows == bottom_bound)
 
-            for index in top_index[0]:
-                boundaries.insert(0, (rows[index], cols[index]))
-            for index in bottom_index[0]:
-                boundaries.append((rows[index], cols[index]))
+        for index in top_index[0]:
+            bound_coord.insert(0, (rows[index], cols[index]))
+            bound_label.insert(0, self.img_labels[rows[index] - 1, cols[index]])
+        for index in bottom_index[0]:
+            bound_coord.append((rows[index], cols[index]))
+            bound_label.append(self.img_labels[rows[index] + 1, cols[index]])
 
+        boundaries = (
+            np.asarray(bound_coord),
+            np.asarray(bound_label)
+        )
         return boundaries
 
-    def find_cluster_property(self):
+    def extend_obj_boundaries(self, label):
+        extended_bound_coord, extended_bound_label = self.find_cluster_boundaries(label)
+        obj_bound_coord, obj_bound_label = self.f_object.boundaries
 
+        new_bound_cord = np.concatenate((
+            extended_bound_coord[np.where(extended_bound_label != self.f_object.main_label)],
+            obj_bound_coord[np.where(obj_bound_label != label)]
+        ))
+
+        new_bound_label = np.concatenate((
+            extended_bound_label[np.where(extended_bound_label != self.f_object.main_label)],
+            obj_bound_label[np.where(obj_bound_label != label)]
+        ))
+
+        self.f_object.boundaries = (new_bound_cord, new_bound_label)
+
+    def find_cluster_property(self):
         numerator_hue = numerator_sat = numerator_val = denominator = 0
+
         for label in self.f_object.labels:
             index = np.where(self.img_labels == label)
 
@@ -100,10 +125,6 @@ class Detector:
 
     def compute_avg(self, cluster_property, label):
         numerator_hue, numerator_sat, numerator_val, denominator = cluster_property
-
-        init_avg_hue = numerator_hue / denominator
-        init_avg_sat = numerator_sat / denominator
-        init_avg_val = numerator_val / denominator
 
         index = np.where(self.img_labels == label)
 
@@ -128,7 +149,7 @@ class Detector:
 
     def find_neighbour_labels(self):
         neighbour = set()
-        for row, col in self.f_object.boundaries:
+        for row, col in self.f_object.boundaries[0]:
             if self.img_labels[row, col - 1] not in self.f_object.labels: neighbour.add(self.img_labels[row, col - 1])
             if self.img_labels[row, col + 1] not in self.f_object.labels: neighbour.add(self.img_labels[row, col + 1])
             if self.img_labels[row - 1, col] not in self.f_object.labels: neighbour.add(self.img_labels[row - 1, col])
@@ -138,21 +159,20 @@ class Detector:
 
     def detect_object(self):
         start = time.time()
-
         img = np.copy(self.original_img)
 
+        self.f_object.boundaries = self.find_cluster_boundaries(self.f_object.main_label)
+
         while True:
-            self.f_object.boundaries = self.find_cluster_boundaries()
-            print(len(self.f_object.boundaries))
             neighbours = self.find_neighbour_labels()
-            print(neighbours)
 
             exit_flag = True
 
             for label in neighbours:
                 cluster_property = self.find_cluster_property()
-                if self.compute_avg(cluster_property, label) < 0.5:
+                if self.compute_avg(cluster_property, label) < 0.12:
                     self.f_object.labels.append(label)
+                    self.extend_obj_boundaries(label)
                     exit_flag = False
 
             if exit_flag: break
@@ -178,7 +198,7 @@ class Detector:
 
     @staticmethod
     def get_undefined_object(self):
-        raise KeyError("You have to define instance of ForegroundObject with set_foreground_object method")
+        raise KeyError("You have to define f_object member with instance of ForegroundObject")
 
     undefined = property(get_undefined_object)
 

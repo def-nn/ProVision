@@ -5,7 +5,7 @@ from tkinter import *
 from tkinter.filedialog import askopenfilename
 from tkinter.messagebox import showerror, showinfo
 from PIL import Image, ImageTk
-from process import find_edges, ForegroundDetector
+from process import find_edges, detect_foreground
 
 
 MAIN_COLOR = '#2F6883'
@@ -242,7 +242,12 @@ class ActionPanel(Frame):
 
 
     def detect(self, original_img, settings):
-        pass
+        spatial_radius, range_radius, min_density = settings
+        segmented_img, labels_img, number_regions = pms.segment(original_img,
+                                                            spatial_radius, range_radius, min_density)
+        res = detect_foreground(original_img, labels_img)
+
+        return res
 
     def find_edges(self, original_img, settings):
         spatial_radius, range_radius, min_density = settings

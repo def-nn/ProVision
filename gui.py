@@ -222,7 +222,7 @@ class ActionPanel(Frame):
                                                value => binding command
         is_settings_enabled (tkinter.IntVar) : if equals to 0 - data from setting panel will be retrieved
                                                and used as parameters for mean shift segmentation
-                                               otherwise default settings will be used (8, 10, 20)
+                                               otherwise default settings will be used (8, 8, 20)
     """
 
     def __init__(self, master):
@@ -320,7 +320,7 @@ class ActionPanel(Frame):
                     showerror('Invalid parameters',
                               'Parameters must be positve integer value')
                     return None
-        else: settings = (8, 10, 20)
+        else: settings = (8, 8, 20)
 
         return settings
 
@@ -397,11 +397,11 @@ class ActionPanel(Frame):
             detector.f_object = f_obj
 
             (x1, y1), (x2, y2) = detector.detect_object()
-            if not(x1 == 0 and y1 == 0 and x2 == labels_img.shape[0] and y2 == labels_img.shape[1]):
-                x1 = labels_img.shape[0] * 0.05
-                x1 = labels_img.shape[1] * 0.05
-                x1 *= 0.9
-                x1 *= 0.9
+            if x1 == 0 and y1 == 0 and x2 == labels_img.shape[0] and y2 == labels_img.shape[1]:
+                x1 = int(labels_img.shape[0] * 0.05)
+                y1 = int(labels_img.shape[1] * 0.05)
+                x2 = int(x2 * 0.9)
+                y2 = int(y2 * 0.9)
 
             img = cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
 

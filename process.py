@@ -150,10 +150,19 @@ class Detector:
     def find_neighbour_labels(self):
         neighbour = set()
         for row, col in self.f_object.boundaries[0]:
-            if self.img_labels[row, col - 1] not in self.f_object.labels: neighbour.add(self.img_labels[row, col - 1])
-            if self.img_labels[row, col + 1] not in self.f_object.labels: neighbour.add(self.img_labels[row, col + 1])
-            if self.img_labels[row - 1, col] not in self.f_object.labels: neighbour.add(self.img_labels[row - 1, col])
-            if self.img_labels[row + 1, col] not in self.f_object.labels: neighbour.add(self.img_labels[row + 1, col])
+
+            if row != self.img_labels.shape[0] - 1 and row != 0:
+                if self.img_labels[row - 1, col] not in self.f_object.labels:
+                    neighbour.add(self.img_labels[row - 1, col])
+                if self.img_labels[row + 1, col] not in self.f_object.labels:
+                    neighbour.add(self.img_labels[row + 1, col])
+
+            if col != self.img_labels.shape[0] - 1 and col != 0:
+                if self.img_labels[row, col - 1] not in self.f_object.labels:
+                    neighbour.add(self.img_labels[row, col - 1])
+                if self.img_labels[row, col + 1] not in self.f_object.labels:
+                    neighbour.add(self.img_labels[row, col + 1])
+
 
         return neighbour
 
@@ -170,7 +179,7 @@ class Detector:
 
             for label in neighbours:
                 cluster_property = self.find_cluster_property()
-                if self.compute_avg(cluster_property, label) < 0.12:
+                if self.compute_avg(cluster_property, label) < 0.1:
                     self.f_object.labels.append(label)
                     self.extend_obj_boundaries(label)
                     exit_flag = False

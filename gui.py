@@ -210,7 +210,7 @@ class ActionPanel(Frame):
                     showerror('Invalid parameters',
                               'Parameters must be positve integer value')
                     return None
-        else: settings = (8, 8, 20)
+        else: settings = (8, 12, 20)
 
         return settings
 

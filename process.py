@@ -56,39 +56,35 @@ class Detector:
         else:
             self.__dict__[key] = value
 
-    def find_cluster_boundaries(self, img, label):
-        rows, cols = np.where(self.img_labels == label)
+    def find_cluster_boundaries(self):
         boundaries = list()
 
-        for row in set(rows):
-            col_list = cols[np.where(rows == row)]
-            left, right = np.min(col_list), np.max(col_list)
+        for label in self.f_object.labels:
+            rows, cols = np.where(self.img_labels == label)
 
-            img[row, left] = (0, 0, 255)
-            img[row, right] = (0, 0, 255)
+            for row in set(rows):
+                col_list = cols[np.where(rows == row)]
+                left, right = np.min(col_list), np.max(col_list)
 
-            boundaries.append((row, left))
-            boundaries.append((row, right))
+                boundaries.append((row, left))
+                boundaries.append((row, right))
 
-        boundaries[:2] = []
-        boundaries[-2:] = []
+            boundaries[:2] = []
+            boundaries[-2:] = []
 
-        top_bound, bottom_bound = np.min(rows), np.max(rows)
+            top_bound, bottom_bound = np.min(rows), np.max(rows)
 
-        top_index = np.where(rows == top_bound)
-        bottom_index = np.where(rows == bottom_bound)
+            top_index = np.where(rows == top_bound)
+            bottom_index = np.where(rows == bottom_bound)
 
-        for index in top_index[0]:
-            boundaries.insert(0, (rows[index], cols[index]))
-        for index in bottom_index[0]:
-            boundaries.append((rows[index], cols[index]))
-
-        img[rows[top_index], cols[top_index]] = (0, 0, 255)
-        img[rows[bottom_index], cols[bottom_index]] = (0, 0, 255)
+            for index in top_index[0]:
+                boundaries.insert(0, (rows[index], cols[index]))
+            for index in bottom_index[0]:
+                boundaries.append((rows[index], cols[index]))
 
         return boundaries
 
-    def compute_avg(self):
+    def find_cluster_property(self):
 
         numerator_hue = numerator_sat = numerator_val = denominator = 0
         for label in self.f_object.labels:
@@ -100,6 +96,23 @@ class Detector:
 
             denominator += len(index[0])
 
+        return numerator_hue, numerator_sat, numerator_val, denominator
+
+    def compute_avg(self, cluster_property, label):
+        numerator_hue, numerator_sat, numerator_val, denominator = cluster_property
+
+        init_avg_hue = numerator_hue / denominator
+        init_avg_sat = numerator_sat / denominator
+        init_avg_val = numerator_val / denominator
+
+        index = np.where(self.img_labels == label)
+
+        numerator_hue += np.sum(self.hue[index])
+        numerator_sat += np.sum(self.sat[index])
+        numerator_val += np.sum(self.val[index])
+
+        denominator += len(index[0])
+
         avg_hue = numerator_hue / denominator
         avg_sat = numerator_sat / denominator
         avg_val = numerator_val / denominator
@@ -109,17 +122,11 @@ class Detector:
             (
                 self.hue[self.f_object.c_row, self.f_object.c_col],
                 self.sat[self.f_object.c_row, self.f_object.c_col],
-                self.val[self.f_object.c_row, self.f_object.c_col],
+                self.val[self.f_object.c_row, self.f_object.c_col]
             )
         )
 
-    def detect_object(self):
-        start = time.time()
-
-        img = np.copy(self.original_img)
-
-        self.f_object.boundaries = self.find_cluster_boundaries(img, self.f_object.main_label)
-
+    def find_neighbour_labels(self):
         neighbour = set()
         for row, col in self.f_object.boundaries:
             if self.img_labels[row, col - 1] not in self.f_object.labels: neighbour.add(self.img_labels[row, col - 1])
@@ -127,19 +134,31 @@ class Detector:
             if self.img_labels[row - 1, col] not in self.f_object.labels: neighbour.add(self.img_labels[row - 1, col])
             if self.img_labels[row + 1, col] not in self.f_object.labels: neighbour.add(self.img_labels[row + 1, col])
 
-        print((
-                self.hue[self.f_object.c_row, self.f_object.c_col],
-                self.sat[self.f_object.c_row, self.f_object.c_col],
-                self.val[self.f_object.c_row, self.f_object.c_col],
-            ))
+        return neighbour
 
-        winner = []
-        for label in neighbour:
-            self.f_object.labels = [self.f_object.main_label, label]
-            if self.compute_avg() < 0.12:
-                self.img_labels[np.where(self.img_labels == label)] = self.f_object.main_label
+    def detect_object(self):
+        start = time.time()
 
-        img[np.where(self.img_labels != self.f_object.main_label)] = 0
+        img = np.copy(self.original_img)
+
+        while True:
+            self.f_object.boundaries = self.find_cluster_boundaries()
+            print(len(self.f_object.boundaries))
+            neighbours = self.find_neighbour_labels()
+            print(neighbours)
+
+            exit_flag = True
+
+            for label in neighbours:
+                cluster_property = self.find_cluster_property()
+                if self.compute_avg(cluster_property, label) < 0.5:
+                    self.f_object.labels.append(label)
+                    exit_flag = False
+
+            if exit_flag: break
+
+        for label in self.f_object.labels:
+            img[np.where(self.img_labels == label)] = 0
 
         print(time.time() - start)
 

@@ -15,7 +15,7 @@ def find_edges(img, img_labels):
         for col in range(1, img_labels.shape[1]):
             if (img_labels[row, col] != img_labels[row - 1, col]
              or img_labels[row, col] != img_labels[row, col - 1]):
-                res[row, col] = (0, 0, 255)
+                res[row - 1: row + 2, col - 1: col + 2] = (255, 255, 255)
 
     return res
 
@@ -283,12 +283,9 @@ class Detector:
         image, contours, hierarcly = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         x, y, w, h = cv2.boundingRect(contours[0])
 
-        x1, y1 = int(x * 0.95), int(y * 0.95)
-        x2, y2 = int((x + w) * 1.05), int((y + h) * 1.05)
-
         print(time.time() - start)
 
-        return (x1, y1), (x2, y2)
+        return (x, y), (x + w, y + h)
 
     @staticmethod
     def get_undefined_object(self):

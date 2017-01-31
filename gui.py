@@ -82,10 +82,13 @@ class ImageContainer(Frame):
 
     Attributes:
         img         (PIL.Image) : image that will be shown on the screen
+        file              (str) : path to the original image
         widget  (tkinter.Label) : main work area - displays hint "Please choose image" if no image has been uploaded
-                                or instance of tkinter.Canvas class with selected photo otherwise
+                                  or instance of tkinter.Canvas class with selected photo otherwise
         widget_width      (int) : object width
         widget_height     (int) : object height
+        img_width         (int) : width of shown image
+        img_height        (int) : height of shown image
         canvas (tkinter.Canvas) : canvas for displaying image
                                   will be initialized when an image is uploaded for the first time
         draw_mode        (bool) : True when button "Detect" was pressed
@@ -101,11 +104,13 @@ class ImageContainer(Frame):
         Frame.__init__(self, master=master)
 
         self.img = None
+        self.file = ''
         self.widget = Label(self, text="Please choose image", font=('helvetica', 20), fg='#ffffff', bg=MAIN_COLOR)
         self.widget.pack(expand=YES, fill=BOTH)
 
         # Will be initialized correctly after uploading image
         self.widget_width, self.widget_height = 0, 0
+        self.img_width, self.img_height = 0, 0
 
         self.canvas = None
         self.draw_mode = False
@@ -128,6 +133,7 @@ class ImageContainer(Frame):
         if file:
             try:
                 self.img = Image.open(file)
+                self.file = file
             except IOError:
                 raise IOError("Can't open image {}".format(file))
         elif img_matrix != None:
@@ -144,12 +150,12 @@ class ImageContainer(Frame):
         self.draw_mode = False
 
         self.widget_width, self.widget_height = self.winfo_width(), self.winfo_height()
-        img_width, img_height = self.img.size
+        self.img_width, self.img_height = self.img.size
 
         # Resize image if its bigger then container area
-        if img_width > self.widget_width or img_height > self.widget_height:
+        if self.img_width > self.widget_width or self.img_height > self.widget_height:
             self.img.thumbnail((self.widget_width - 100, self.widget_height - 120), Image.ANTIALIAS)
-            img_width, img_height = self.img.size
+            self.img_width, self.img_height = self.img.size
 
         self.widget.pack_forget()
         self.widget = Label(self)
@@ -161,12 +167,12 @@ class ImageContainer(Frame):
 
         photo = ImageTk.PhotoImage(self.img)
         self.canvas.create_image(self.widget_width // 2, self.widget_height // 2, image=photo)
-        self.canvas.img_width, self.canvas.img_height = img_width, img_height
+        self.canvas.img_width, self.canvas.img_height = self.img_width, self.img_height
 
         # That image would not be garbage collected
         self.canvas.image = photo
 
-        params = self.widget_width, self.widget_height, img_width, img_height
+        params = self.widget_width, self.widget_height, self.img_width, self.img_height
         self.canvas.bind('<ButtonPress-1>', lambda event, params=params: self.onClick(event, *params))
 
     def activate_draw_mode(self, panel):
@@ -306,8 +312,7 @@ class ActionPanel(Frame):
     def load_image(self):
         file = askopenfilename(title='Choose image', filetypes=filetypes)
         if file:
-            self.file = file
-            self.master.img_container.pack_image(file=self.file)
+            self.master.img_container.pack_image(file=file)
             self.set_buttons_enabled()
 
     def get_settings(self):
@@ -339,7 +344,7 @@ class ActionPanel(Frame):
             action_key (str) : determines which action was chosen (which button was clicked)
         """
         if action_key == DETECT:
-            self.master.img_container.pack_image(file=self.file)
+            self.master.img_container.pack_image(file=self.master.img_container.file)
             self.master.img_container.activate_draw_mode(self)
             return
 
@@ -351,7 +356,11 @@ class ActionPanel(Frame):
         settings = self.get_settings()
         if not settings: return
 
-        original_img = Image.open(self.file)
+        original_img = Image.open(self.master.img_container.file)
+        original_img.thumbnail(
+            (self.master.img_container.img_width, self.master.img_container.img_height),
+            Image.ANTIALIAS
+        )
 
         self.config(cursor='wait')
 
@@ -378,12 +387,14 @@ class ActionPanel(Frame):
     def detect(self, markers):
         self.config(cursor='wait')
 
-        self.master.img_container.pack_image(file=self.file)
-
         settings = self.get_settings()
         if not settings: return
 
-        original_img = Image.open(self.file)
+        original_img = Image.open(self.master.img_container.file)
+        original_img.thumbnail(
+            (self.master.img_container.img_width, self.master.img_container.img_height),
+            Image.ANTIALIAS
+        )
 
         spatial_radius, range_radius, min_density = settings
         segmented_img, labels_img, number_regions = pms.segment(original_img,
